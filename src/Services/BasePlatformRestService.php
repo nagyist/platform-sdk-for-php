@@ -23,13 +23,18 @@ use DreamFactory\Common\Enums\OutputFormats;
 use DreamFactory\Common\Utility\DataFormat;
 use DreamFactory\Platform\Components\DataTablesFormatter;
 use DreamFactory\Platform\Enums\DataFormats;
+use DreamFactory\Platform\Enums\PlatformServiceTypes;
 use DreamFactory\Platform\Enums\ResponseFormats;
+use DreamFactory\Platform\Events\Enums\ResourceServiceEvents;
+use DreamFactory\Platform\Events\ResourceEvent;
+use DreamFactory\Platform\Events\RestServiceEvent;
 use DreamFactory\Platform\Exceptions\BadRequestException;
 use DreamFactory\Platform\Exceptions\MisconfigurationException;
 use DreamFactory\Platform\Exceptions\NoExtraActionsException;
 use DreamFactory\Platform\Interfaces\RestServiceLike;
 use DreamFactory\Platform\Interfaces\TransformerLike;
 use DreamFactory\Platform\Resources\BasePlatformRestResource;
+use DreamFactory\Platform\Resources\BaseSystemRestResource;
 use DreamFactory\Platform\Utility\ResourceStore;
 use DreamFactory\Platform\Utility\RestResponse;
 use DreamFactory\Platform\Yii\Models\BasePlatformSystemModel;
@@ -37,6 +42,7 @@ use DreamFactory\Yii\Utility\Pii;
 use Kisma\Core\Enums\HttpMethod;
 use Kisma\Core\Utility\FilterInput;
 use Kisma\Core\Utility\Option;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
  * BasePlatformRestService
@@ -309,6 +315,7 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
         if ( $_methodToCall )
         {
             $_result = call_user_func( $_methodToCall );
+            $this->_triggerActionEvent( $_result );
 
             return $_result;
         }
@@ -345,6 +352,14 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
      */
     protected function _preProcess()
     {
+		//	The system service shouldn't trigger events, only the resources...
+		if ( PlatformServiceTypes::SYSTEM_MANAGER_SERVICE == $this->_apiName && !empty( $this->_resource ) )
+		{
+			return;
+		}
+
+		return $this->trigger( ResourceServiceEvents::PRE_PROCESS );
+
         // throw exception here to stop processing
     }
 
@@ -356,6 +371,14 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
      */
     protected function _postProcess()
     {
+		//	The system service shouldn't trigger events, only the resources...
+		if ( PlatformServiceTypes::SYSTEM_MANAGER_SERVICE == $this->_apiName && !empty( $this->_resource ) )
+		{
+			return;
+		}
+
+		return $this->trigger( ResourceServiceEvents::POST_PROCESS );
+
         // throw exception here to stop processing
     }
 
@@ -403,6 +426,8 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
         {
             $_result = DataFormat::reformatData( $_result, $this->_nativeFormat, $this->_outputFormat );
         }
+
+        $this->_triggerActionEvent( $_result, ResourceServiceEvents::AFTER_DATA_FORMAT );
 
         if ( !empty( $this->_outputFormat ) )
         {
@@ -496,6 +521,9 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
      */
     protected function _handleMerge()
     {
+		$_eventName = $this->_apiName . '.update';
+		$this->trigger( $_eventName );
+
         return false;
     }
 
@@ -528,6 +556,9 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
      */
     protected function _handlePost()
     {
+		$_eventName = $this->_apiName . '.create';
+		$this->trigger( $_eventName );
+
         return false;
     }
 
@@ -536,6 +567,9 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
      */
     protected function _handlePut()
     {
+		$_eventName = $this->_apiName . '.update';
+		$this->trigger( $_eventName );
+
         return false;
     }
 
@@ -544,6 +578,9 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
      */
     protected function _handlePatch()
     {
+		$_eventName = $this->_apiName . '.update';
+		$this->trigger( $_eventName );
+
         return false;
     }
 
@@ -578,13 +615,39 @@ abstract class BasePlatformRestService extends BasePlatformService implements Re
     }
 
     /**
-     * @param string $resource
-     *
-     * @return string
+     * {@InheritDoc}
      */
-    public function getPermissions( $resource = null )
+    public function trigger( $eventName, $event = null, $priority = 0 )
     {
-        return ResourceStore::getPermissions( $this->_apiName, $resource );
+        return parent::trigger(
+            str_ireplace( array( '{api_name}', '{action}' ), array( $this->_apiName, strtolower( $this->_action ) ), $eventName ),
+            $event ? : new RestServiceEvent( $this->_apiName, $this->_resource ),
+            $priority
+        );
+    }
+
+    /**
+     * Triggers the appropriate event for the action /api_name/resource/resourceId
+     *
+     * @param mixed            $result    The result of the call
+     * @param string           $eventName The event to trigger. If not supplied, one will looked up based on the context
+     * @param RestServiceEvent $event
+     *
+     * @return bool
+     */
+    protected function _triggerActionEvent( $result, $eventName = null, $event = null )
+    {
+        $_eventName = $eventName ? : SwaggerManager::findEvent( $this, $this->_action );
+
+        if ( empty( $_eventName ) )
+        {
+            return false;
+        }
+
+        return $this->trigger(
+            $_eventName,
+            $event ? : new RestServiceEvent( $this instanceOf BaseSystemRestResource ? 'system' : $this->_apiName, $this->_resource, $result )
+        );
     }
 
     /**

@@ -314,7 +314,7 @@ class PlatformWebApplication extends \CWebApplication implements PublisherLike, 
     //*************************************************************************
 
     /**
-     * Triggers a DSP-level event
+     * Triggers an event
      *
      * @param string        $eventName
      * @param PlatformEvent $event

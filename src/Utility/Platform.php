@@ -21,6 +21,8 @@ namespace DreamFactory\Platform\Utility;
 
 use DreamFactory\Platform\Components\PlatformStore;
 use DreamFactory\Platform\Enums\LocalStorageTypes;
+use DreamFactory\Platform\Events\EventDispatcher;
+use DreamFactory\Platform\Events\PlatformEvent;
 use DreamFactory\Platform\Interfaces\PersistentStoreLike;
 use DreamFactory\Platform\Services\SystemManager;
 use DreamFactory\Yii\Utility\Pii;
@@ -333,4 +335,15 @@ class Platform extends SeedUtility
         static::$_persistentStore = $persistentStore;
     }
 
+    /**
+     * @param string          $eventName
+     * @param PlatformEvent   $event
+     * @param EventDispatcher $dispatcher
+     *
+     * @return \DreamFactory\Platform\Events\DspEvent
+     */
+    public static function trigger( $eventName, $event = null, $dispatcher = null )
+    {
+        return Pii::app()->trigger( $eventName, $event, $dispatcher );
+    }
 }
